@@ -10,7 +10,7 @@ struct Data {
     last_requests: Mutex<HashMap<String, Instant>>,
 }
 
-const WAIT_LIMIT: Duration = Duration::from_secs(10);
+const WAIT_LIMIT: Duration = Duration::from_secs(1);
 
 #[derive(Deserialize)]
 struct PortRequest {
@@ -84,7 +84,6 @@ async fn check_port(req: web::Query<PortRequest>, data: web::Data<Data>, request
     match response {
         Ok(_) => {
             let mut buf = [0; 100];
-            let mut had_response = false;
             let mut response = "&cross; Connection doesn't work: Failed to receive response.";
             while let Ok((num, _)) = socket.recv_from(&mut buf) {
                 if num == 0 {
@@ -100,23 +99,18 @@ async fn check_port(req: web::Query<PortRequest>, data: web::Data<Data>, request
 
                         let _ = socket.send_to(&disconnect, (target_ip.clone(), req.port));
                         response = "&check; Connection works!";
-                        had_response = true;
+
+                        return HttpResponse::Ok().content_type("text/plain").body(response);
                     }
                     // Received either shutdown ok, ping or mtu check, ignore...
                     0x10 | 0x03 | 0x0c => (),
                     // Everything else is considered an error
                     _ => {
-                        if !had_response {
-                            response = "&cross; Connection doesn't work: Received incorrect packet";
-                        }
+                        response = "&cross; Connection doesn't work: Received incorrect packet";
                     }
                 }
             }
-            if had_response {
-                HttpResponse::Ok().content_type("text/plain").body(response)
-            } else {
-                HttpResponse::ServiceUnavailable().content_type("text/plain").body(response)
-            }
+            HttpResponse::ServiceUnavailable().content_type("text/plain").body(response)
         }
         Err(e) => HttpResponse::InternalServerError()
             .content_type("text/plain")
