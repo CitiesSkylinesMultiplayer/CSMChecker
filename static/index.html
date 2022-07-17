@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>CSM Port Checker</title>
+    <script type="text/javascript">
+        function ajax(url, method = "GET", data = "") {
+            return new Promise((resolve, reject) => {
+                let httpRequest = new XMLHttpRequest();
+                httpRequest.onreadystatechange = function() {
+                    if (httpRequest.readyState === XMLHttpRequest.DONE) {
+                        if (httpRequest.status === 200) {
+                            resolve(httpRequest.responseText);
+                        } else {
+                            reject({"text": httpRequest.responseText, "statusCode": httpRequest.status});
+                        }
+                    }
+                };
+                httpRequest.open(method, url, true);
+                if (method === "POST") {
+                    httpRequest.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
+                    httpRequest.send(data);
+                } else {
+                    httpRequest.send();
+                }
+            });
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            ajax("/api/ip").then((result) => {
+                let ip_field = document.getElementById("ip-addr");
+                if (ip_field.value === "") {
+                    ip_field.value = result;
+                }
+            });
+
+            let result_elem = document.getElementById("result");
+            let ip_elem = document.getElementById("ip-addr");
+            let port_elem = document.getElementById("port");
+            let button_elem = document.getElementById("submit-btn");
+
+            document.getElementById("check-form").addEventListener("submit", (e) => {
+                e.preventDefault();
+                let ip = encodeURIComponent(ip_elem.value);
+                let port = encodeURIComponent(port_elem.value);
+                button_elem.value = "Checking...";
+                button_elem.disabled = true;
+                ajax("/api/check?ip=" + ip + "&port=" + port).then((result) => {
+                    result_elem.innerHTML = result;
+                    result_elem.style.color = "green";
+                    button_elem.value = "Check";
+                    button_elem.disabled = false;
+                }).catch((error) => {
+                    if (error.statusCode === 429) {
+                        result_elem.style.color = "darkorange";
+                    } else {
+                        result_elem.style.color = "red";
+                    }
+                    result_elem.innerHTML = error.text;
+                    button_elem.value = "Check";
+                    button_elem.disabled = false;
+                });
+            });
+        });
+    </script>
+    <style>
+        body {
+            font-family: sans-serif;
+        }
+
+        #submit-btn {
+            width: 100px;
+        }
+    </style>
+</head>
+<body>
+    <h1>Check CSM Port Status</h1>
+    You can use this form to check if your CSM server is reachable from the internet.<br />
+    Insert the server's IP address and port into the following form and click "Check" to run the check.<br />
+    The pre-filled values are the IP address which you are currently using to view this page as well as the default port. <br />
+    <br />
+    <form method="GET" action="/api/check" id="check-form">
+        <table>
+            <tr><td><label for="ip-addr">Server IP:</label></td><td><input type="text" id="ip-addr" name="ip" placeholder="Server IP" autocomplete="off" /></td></tr>
+            <tr><td><label for="port">Server Port:</label></td><td><input type="number" value="4230" id="port" name="port" placeholder="Server Port" autocomplete="off" /></td></tr>
+            <tr><td></td><td><input type="submit" value="Check" id="submit-btn" /></td></tr>
+        </table>
+    </form>
+    <h2>Result:</h2>
+    <div id="result"></div>
+</body>
+</html>
