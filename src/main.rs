@@ -1,15 +1,23 @@
 use actix_files::Files;
 use actix_web::{get, web, App, HttpRequest, HttpResponse, HttpServer, Responder};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::net::UdpSocket;
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
+use chrono::{DateTime, Utc};
+
+struct LatestVersion {
+    version: String,
+    updated: DateTime<Utc>,
+}
 
 struct Data {
     last_requests: Mutex<HashMap<String, Instant>>,
+    latest_version: Mutex<LatestVersion>,
 }
 
+const VERSION_INTERVAL: i64 = 30; // seconds
 const WAIT_LIMIT: Duration = Duration::from_secs(1);
 
 #[derive(Deserialize)]
@@ -35,6 +43,55 @@ const DISCONNECT_PACKET: [u8; 9] = [
     0x07, // Disconnect
     0xBA, 0xDE, 0xAF, 0xFE, 0xDE, 0xAD, 0xBE, 0xEF, // Connect Id
 ];
+
+#[derive(Serialize, Deserialize)]
+struct GithubRelease {
+    tag_name: String,
+    published_at: DateTime<Utc>,
+}
+
+#[get("/version")]
+async fn get_version(data: web::Data<Data>) -> impl Responder {
+    let mut latest_version = data.latest_version.lock().unwrap();
+    if !latest_version.version.is_empty() && Utc::now() - latest_version.updated < chrono::Duration::seconds(VERSION_INTERVAL) {
+        return HttpResponse::Ok()
+            .content_type("text/plain")
+            .body(latest_version.version.clone());
+    }
+    let response = ureq::get("https://api.github.com/repos/CitiesSkylinesMultiplayer/CSM/releases").call();
+    match response {
+        Ok(response) => {
+            let releases: Result<Vec<GithubRelease>, _> = response.into_json();
+            match releases {
+                Ok(releases) => {
+                    if releases.is_empty() {
+                        HttpResponse::InternalServerError()
+                            .content_type("text/plain")
+                            .body("No releases found")
+                    } else {
+                        let release = releases.get(0).unwrap();
+                        let version = &release.tag_name;
+                        latest_version.version = version.clone();
+                        latest_version.updated = Utc::now();
+                        HttpResponse::Ok()
+                            .content_type("text/plain")
+                            .body(version.clone())
+                    }
+                }
+                Err(e) => {
+                    HttpResponse::InternalServerError()
+                        .content_type("text/plain")
+                        .body(format!("Unexpected data structure: {e}"))
+                }
+            }
+        }
+        Err(e) => {
+            HttpResponse::InternalServerError()
+                .content_type("text/plain")
+                .body(format!("Failed to request version: {e}"))
+        }
+    }
+}
 
 #[get("/ip")]
 async fn get_ip(req: HttpRequest) -> impl Responder {
@@ -122,6 +179,7 @@ async fn check_port(req: web::Query<PortRequest>, data: web::Data<Data>, request
 async fn main() -> std::io::Result<()> {
     let data = Data {
         last_requests: Mutex::new(HashMap::new()),
+        latest_version: Mutex::new(LatestVersion { version: String::new(), updated: Utc::now() })
     };
 
     let data = web::Data::new(data);
@@ -129,7 +187,7 @@ async fn main() -> std::io::Result<()> {
     HttpServer::new(move || {
         App::new()
             .app_data(data.clone())
-            .service(web::scope("/api").service(check_port).service(get_ip))
+            .service(web::scope("/api").service(check_port).service(get_ip).service(get_version))
             .service(Files::new("/", "static").index_file("index.html"))
     })
     .bind("127.0.0.1:8080")?
