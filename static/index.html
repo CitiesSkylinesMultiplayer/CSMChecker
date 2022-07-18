@@ -46,17 +46,18 @@
                 button_elem.value = "Checking...";
                 button_elem.disabled = true;
                 ajax("/api/check?ip=" + ip + "&port=" + port).then((result) => {
-                    result_elem.innerHTML = result;
+                    result_elem.innerHTML = "&check; " + result;
                     result_elem.style.color = "green";
                     button_elem.value = "Check";
                     button_elem.disabled = false;
                 }).catch((error) => {
                     if (error.statusCode === 429) {
                         result_elem.style.color = "darkorange";
+                        result_elem.innerHTML = "&#128337; " + error.text;
                     } else {
                         result_elem.style.color = "red";
+                        result_elem.innerHTML = "&cross; " + error.text;
                     }
-                    result_elem.innerHTML = error.text;
                     button_elem.value = "Check";
                     button_elem.disabled = false;
                 });

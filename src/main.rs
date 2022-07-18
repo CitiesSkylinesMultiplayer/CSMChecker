@@ -5,7 +5,9 @@ use std::collections::HashMap;
 use std::net::UdpSocket;
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
+use actix_web::middleware::Logger;
 use chrono::{DateTime, Utc};
+use env_logger::Env;
 
 struct LatestVersion {
     version: String,
@@ -113,7 +115,7 @@ async fn check_port(req: web::Query<PortRequest>, data: web::Data<Data>, request
                 return HttpResponse::TooManyRequests()
                     .content_type("text/plain")
                     .body(format!(
-                        "&#128337; Wait at least {} seconds for the next request!",
+                        "Wait at least {} seconds for the next request!",
                         WAIT_LIMIT.as_secs()
                     ));
             }
@@ -141,7 +143,7 @@ async fn check_port(req: web::Query<PortRequest>, data: web::Data<Data>, request
     match response {
         Ok(_) => {
             let mut buf = [0; 100];
-            let mut response = "&cross; Connection doesn't work: Failed to receive response.";
+            let mut response = "Connection doesn't work: Failed to receive response.";
             while let Ok((num, _)) = socket.recv_from(&mut buf) {
                 if num == 0 {
                     continue;
@@ -155,7 +157,7 @@ async fn check_port(req: web::Query<PortRequest>, data: web::Data<Data>, request
                         disconnect[0] |= connection_number << 5; // Insert connection number
 
                         let _ = socket.send_to(&disconnect, (target_ip.clone(), req.port));
-                        response = "&check; Connection works!";
+                        response = "Connection works!";
 
                         return HttpResponse::Ok().content_type("text/plain").body(response);
                     }
@@ -163,7 +165,7 @@ async fn check_port(req: web::Query<PortRequest>, data: web::Data<Data>, request
                     0x10 | 0x03 | 0x0c => (),
                     // Everything else is considered an error
                     _ => {
-                        response = "&cross; Connection doesn't work: Received incorrect packet";
+                        response = "Connection doesn't work: Received incorrect packet";
                     }
                 }
             }
@@ -171,7 +173,7 @@ async fn check_port(req: web::Query<PortRequest>, data: web::Data<Data>, request
         }
         Err(e) => HttpResponse::InternalServerError()
             .content_type("text/plain")
-            .body(format!("&cross; Failed to send request: {}", e)),
+            .body(format!("Failed to send request: {}", e)),
     }
 }
 
@@ -184,9 +186,12 @@ async fn main() -> std::io::Result<()> {
 
     let data = web::Data::new(data);
 
+    env_logger::init_from_env(Env::new().default_filter_or("info"));
+
     HttpServer::new(move || {
         App::new()
             .app_data(data.clone())
+            .wrap(Logger::new("%r -> %s"))
             .service(web::scope("/api").service(check_port).service(get_ip).service(get_version))
             .service(Files::new("/", "static").index_file("index.html"))
     })

@@ -8,6 +8,7 @@ actix-web = "4"
 actix-files = "0.6"
 chrono = { version = "0.4", features = ["serde"] }
 ureq = { version = "2", features = ["json"] }
+env_logger = "0.9"
 
 [dependencies.serde]
 version = "1"
