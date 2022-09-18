@@ -6,9 +6,10 @@ edition = "2021"
 [dependencies]
 actix-web = "4"
 actix-files = "0.6"
-chrono = { version = "0.4", features = ["serde"] }
-ureq = { version = "2", features = ["json"] }
+chrono = { version = "0.4", default-features=false, features = ["clock", "serde"] }
+reqwest = { version = "0.11", default-features=false, features = ["rustls-tls-native-roots", "json"] }
 env_logger = "0.9"
+tokio = { version = "1", features = ["net"] }
 
 [dependencies.serde]
 version = "1"
